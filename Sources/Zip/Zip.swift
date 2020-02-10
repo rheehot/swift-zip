@@ -12,35 +12,68 @@ import CMinizip
 public struct Zip {
     typealias Error = ZipError
 
-    var data: NSPurgeableData
+    var dataSource: DataSource
+
+    var fileURL: URL? {
+        switch dataSource {
+        case .filePath(let filePath):
+            return .init(fileURLWithPath: filePath)
+        case .data:
+            return nil
+        }
+    }
+
+    var data: Data? {
+        switch dataSource {
+        case .filePath(let filePath):
+            return nil
+        case .data(let data):
+            return data
+        }
+    }
+
+    public init(data: Data = .init()) {
+        self.dataSource = .data(data)
+    }
 
     public init(contentsOf url: URL) throws {
-        let data = try NSPurgeableData(contentsOf: url, options: [])
-
-        self.data = data
+        if url.isFileURL {
+            self.dataSource = .filePath(url.path)
+        } else {
+            self.dataSource = try .data(.init(contentsOf: url, options: []))
+        }
     }
 }
 
 extension Zip {
+    private func mz_zip_reader_open_zip_data_source(_ handle: UnsafeMutableRawPointer!, _ dataSource: DataSource) -> Int32 {
+        switch dataSource {
+        case .data(var data):
+            return data.withUnsafeMutableBytes {
+                return mz_zip_reader_open_buffer(
+                    handle,
+                    $0.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                    Int32($0.count),
+                    0
+                )
+            }
+        case .filePath(let filePath):
+            return mz_zip_reader_open_file(
+                handle,
+                filePath
+            )
+        }
+    }
+
     public func getItem(atPath path: String, caseSensitive: Bool = false) throws -> Item? {
         var zipReader: UnsafeMutableRawPointer? = nil
-
-        data.beginContentAccess()
-        defer {
-            data.endContentAccess()
-        }
 
         mz_zip_reader_create(&zipReader)
         defer {
             mz_zip_reader_delete(&zipReader)
         }
 
-        var error = mz_zip_reader_open_buffer(
-            zipReader,
-            data.mutableBytes.assumingMemoryBound(to: UInt8.self),
-            Int32(data.length),
-            0
-        )
+        var error: Int32 = mz_zip_reader_open_zip_data_source(zipReader, dataSource)
         defer {
             mz_zip_reader_close(zipReader)
         }
@@ -78,9 +111,7 @@ extension Zip {
 
         return .init(path: file.flatMap({ String(cString: $0.pointee.filename) }) ?? path, data: Data(buffer))
     }
-}
 
-extension Zip {
     public func unzip(to url: URL) throws {
         guard url.isFileURL else {
             throw Error.invalidURL
@@ -92,22 +123,12 @@ extension Zip {
     public func unzip(toPath path: String, progressHandler: ((Double) -> Void)? = nil) throws {
         var zipReader: UnsafeMutableRawPointer? = nil
 
-        data.beginContentAccess()
-        defer {
-            data.endContentAccess()
-        }
-
         mz_zip_reader_create(&zipReader)
         defer {
             mz_zip_reader_delete(&zipReader)
         }
 
-        var error = mz_zip_reader_open_buffer(
-            zipReader,
-            data.mutableBytes.assumingMemoryBound(to: UInt8.self),
-            Int32(data.length),
-            0
-        )
+        var error: Int32 = mz_zip_reader_open_zip_data_source(zipReader, dataSource)
         defer {
             mz_zip_reader_close(zipReader)
         }
@@ -156,5 +177,12 @@ extension Zip {
     public struct Item {
         var path: String
         var data: Data
+    }
+}
+
+extension Zip {
+    enum DataSource {
+        case data(Data)
+        case filePath(String)
     }
 }
