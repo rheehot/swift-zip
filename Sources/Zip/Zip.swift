@@ -10,6 +10,8 @@ import Foundation
 import CMinizip
 
 public struct Zip {
+    typealias Error = ZipError
+
     var data: NSPurgeableData
 
     public init(contentsOf url: URL) throws {
@@ -44,7 +46,7 @@ extension Zip {
         }
 
         guard error == MZ_OK else {
-            throw Error.unknown(code: Int(error))
+            throw Error.underlyingMinizipError(code: error)
         }
 
         let filenameCString = path.cString(using: .utf8)
@@ -54,7 +56,7 @@ extension Zip {
             if error == MZ_END_OF_LIST {
                 return nil
             } else {
-                throw Error.unknown(code: Int(error))
+                throw Error.underlyingMinizipError(code: error)
             }
         }
 
@@ -62,7 +64,7 @@ extension Zip {
 
         error = mz_zip_reader_entry_get_info(zipReader, &file)
         guard error == MZ_OK else {
-            throw Error.unknown(code: Int(error))
+            throw Error.underlyingMinizipError(code: error)
         }
 
         let bufferLength = mz_zip_reader_entry_save_buffer_length(zipReader)
@@ -71,7 +73,7 @@ extension Zip {
 
         error = mz_zip_reader_entry_save_buffer(zipReader, &buffer, bufferLength)
         guard error == MZ_OK else {
-            throw Error.unknown(code: Int(error))
+            throw Error.underlyingMinizipError(code: error)
         }
 
         return .init(path: file.flatMap({ String(cString: $0.pointee.filename) }) ?? path, data: Data(buffer))
@@ -111,7 +113,7 @@ extension Zip {
         }
 
         guard error == MZ_OK else {
-            throw Error.unknown(code: Int(error))
+            throw Error.underlyingMinizipError(code: error)
         }
 
         var progressHandler = progressHandler
@@ -145,15 +147,8 @@ extension Zip {
 
         error = mz_zip_reader_save_all(zipReader, path.cString(using: .utf8))
         guard error == MZ_OK || error == MZ_END_OF_LIST else {
-            throw Error.unknown(code: Int(error))
+            throw Error.underlyingMinizipError(code: error)
         }
-    }
-}
-
-extension Zip {
-    enum Error: Swift.Error {
-        case invalidURL
-        case unknown(code: Int? = nil)
     }
 }
 
