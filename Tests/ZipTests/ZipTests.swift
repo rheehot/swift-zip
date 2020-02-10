@@ -7,7 +7,7 @@ final class ZipTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("jikji.epub+zip.epub")
 
-        let test = {
+        func test() {
             do {
                 let zip = try Zip(contentsOf: fileURL)
 
