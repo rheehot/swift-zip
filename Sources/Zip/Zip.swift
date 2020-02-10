@@ -25,7 +25,7 @@ public struct Zip {
 
     var data: Data? {
         switch dataSource {
-        case .filePath(let filePath):
+        case .filePath:
             return nil
         case .data(let data):
             return data
